@@ -1,0 +1,6 @@
+scikit-learn>=1.4
+xgboost>=2.0
+fastapi>=0.110
+uvicorn[standard]>=0.29
+pandas>=2.2
+numpy>=1.26

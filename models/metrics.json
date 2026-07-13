@@ -1,0 +1,33 @@
+{
+  "classifier_accuracy": 0.8055555555555556,
+  "regressor_mae": 0.37286566631892115,
+  "regressor_r2": 0.9722906033652577,
+  "label_classes": [
+    "High",
+    "Low",
+    "Medium"
+  ],
+  "clf_features": [
+    "rainfall_mm",
+    "ndvi_proxy_0_1",
+    "pest_incidents_reported",
+    "irrigation_coverage_pct",
+    "input_availability_score_0_100",
+    "avg_farmgate_price_usd_per_tonne",
+    "month_num",
+    "crop",
+    "province"
+  ],
+  "reg_features": [
+    "rainfall_mm",
+    "ndvi_proxy_0_1",
+    "pest_incidents_reported",
+    "irrigation_coverage_pct",
+    "input_availability_score_0_100",
+    "avg_farmgate_price_usd_per_tonne",
+    "month_num",
+    "crop",
+    "province",
+    "climate_crop_risk_score_0_100"
+  ]
+}
