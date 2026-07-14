@@ -2,16 +2,15 @@
 FastAPI backend for the AgriRisk classification service.
 Endpoints:
   POST /predict    — risk classification from raw field inputs
-  GET  /districts  — district risk summary (for internal review, not USSD)
+  GET  /districts  — province-level risk summary (for internal review, not USSD)
   GET  /health     — model metrics + dataset disclosure
 """
 
-import json
 import pathlib
 import pickle
 
 import pandas as pd
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -35,7 +34,8 @@ def _load():
     with open(MODELS_DIR / "classifier.pkl", "rb") as f:
         _bundle = pickle.load(f)
     _df = pd.read_csv(DATA_PATH)
-    _df["month_num"] = pd.to_datetime(_df["month"]).dt.month
+    _df["month_num"] = _df["month"].astype(str).str.split("-").str[1].astype(int)
+    _df["risk_binary"] = _df["risk_level"].apply(lambda x: "Low" if x == "Low" else "Elevated")
 
 
 @app.on_event("startup")
@@ -101,6 +101,51 @@ def predict(req: PredictRequest):
         risk_probabilities=proba_dict,
         action_recommendation=_build_action(risk, req),
     )
+
+
+@app.get("/districts")
+def districts(province: str | None = Query(default=None)):
+    """
+    District-level descriptive statistics computed directly from recorded
+    data — no model inference call. avg_yield_t_per_ha is the historical
+    average of the recorded estimated_yield_t_per_ha column: a descriptive
+    stat over past data, not a model prediction. This is distinct from the
+    yield-REGRESSION MODEL, which was scoped and dropped (see /health) after
+    a feature-importance audit showed it was dominated by crop identity
+    rather than climate signal. No such model is invoked here.
+    """
+    if _df is None:
+        raise HTTPException(status_code=503, detail="Data not loaded yet.")
+
+    df = _df
+    if province:
+        df = df[df["province"] == province]
+        if df.empty:
+            raise HTTPException(status_code=404, detail=f"No records for province '{province}'.")
+
+    grouped = df.groupby(["province", "district"])
+    results = []
+    for (prov, dist), g in grouped:
+        elevated_pct = round((g["risk_binary"] == "Elevated").mean() * 100, 1)
+        dominant_level = "Elevated" if elevated_pct >= 50 else "Low"
+        crop_elevated_rate = (
+            g.groupby("crop")["risk_binary"]
+            .apply(lambda s: (s == "Elevated").mean())
+            .sort_values(ascending=False)
+        )
+        high_risk_crops = crop_elevated_rate[crop_elevated_rate > 0.5].index.tolist()
+
+        results.append({
+            "province": prov,
+            "district": dist,
+            "record_count": int(len(g)),
+            "pct_elevated": elevated_pct,
+            "dominant_risk_level": dominant_level,
+            "high_risk_crops": high_risk_crops,
+            "avg_yield_t_per_ha": round(float(g["estimated_yield_t_per_ha"].mean()), 2),
+        })
+
+    return results
 
 
 @app.get("/health")
