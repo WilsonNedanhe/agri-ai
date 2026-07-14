@@ -1,99 +1,62 @@
-# AgriAI — Agriculture Climate & Market Signal Intelligence
+# AgriRisk — Crop Risk Advisory API
 
-Dual-output ML system for Zimbabwe district-level agricultural risk assessment
-and yield prediction. Built for the AI4I Development Track (Track 3).
+AI-powered crop risk classification for Zimbabwe smallholder farmers, built for the POTRAZ AI4I Challenge, Track 3 — Development.
 
----
+## About
 
-## Quick Start
+Smallholder farmers in Zimbabwe make critical seasonal decisions — input purchase timing, irrigation prioritization, pest response — with limited access to consolidated climate and market signal data. AgriRisk is a lightweight FastAPI service that classifies crop risk (Low vs Elevated) from nine raw, farmer-answerable inputs, and returns a one-line actionable recommendation alongside the prediction.
 
-```bash
-# 1 — Install dependencies
-pip install scikit-learn xgboost fastapi uvicorn pandas numpy
+The project deliberately scopes itself to what the data can actually support. A yield-prediction module was built, tested, and **dropped**: a feature-importance audit showed 92% of its apparent accuracy came from a single crop-identity flag rather than any real climate signal — a crop lookup table, not a climate-risk model. That decision, and the reasoning behind it, is disclosed in the `/health` endpoint and in the full technical proposal.
 
-# 2 — Train models (creates models/classifier.pkl, models/regressor.pkl)
-python models/train.py
-
-# 3 — Start API server
-uvicorn api.main:app --reload --port 8000
-
-# 4 — Open dashboard
-open frontend/index.html     # or double-click in Windows Explorer
-```
-
----
-
-## Project Structure
-
-```
-agri-ai/
-├── data/
-│   └── agriculture_climate_market_signals.csv   # Synthetic AI4I dataset
-├── models/
-│   ├── train.py                                 # ML training pipeline
-│   ├── classifier.pkl                           # Risk level GBT (generated)
-│   ├── regressor.pkl                            # Yield GBT (generated)
-│   └── metrics.json                             # Evaluation metrics (generated)
-├── api/
-│   └── main.py                                  # FastAPI backend
-├── frontend/
-│   └── index.html                               # Single-page dashboard
-└── docs/
-    ├── architecture.md                          # System architecture + AI justification
-    └── dataset_statement.md                     # Formal data provenance statement
-```
-
----
-
-## API Endpoints
+## Endpoints
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/predict` | Risk level + yield prediction |
-| GET | `/districts` | All districts ranked by risk score |
-| GET | `/trends` | Monthly aggregate signals |
-| GET | `/health` | Model metrics + dataset statement |
+| `POST` | `/predict` | Binary risk classification (Low/Elevated) + probabilities + action recommendation, from raw inputs |
+| `GET` | `/districts` | District-level descriptive statistics (% elevated risk, dominant risk level, high-risk crops, historical average yield) — computed directly from recorded data, no model call |
+| `GET` | `/health` | Model metrics and mandatory dataset provenance / limitation disclosure |
 
-### Example predict request
+## Model
+
+- **Algorithm:** Gradient Boosted Tree (scikit-learn `GradientBoostingClassifier`, 200 estimators, max depth 4)
+- **Target:** Binary — Low / Elevated risk (collapsed from an original 3-class target; the High-risk class had only 15/360 rows and scored 0.00 precision/recall/F1 under cross-validation, so a 3-class model would have been indefensible)
+- **Validation:** 5-fold cross-validated balanced accuracy of 0.804 ± 0.040
+- **Why ML at all:** a single-variable rainfall threshold baseline scores 75.0% accuracy on the same data. The classifier's real value is case-level — it catches 92% of cases where rainfall alone would have signaled "safe" but pest pressure or poor irrigation access drove elevated risk anyway.
+
+## Setup
 
 ```bash
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "rainfall_mm": 10,
-    "ndvi_proxy_0_1": 0.2,
-    "pest_incidents_reported": 18,
-    "irrigation_coverage_pct": 5,
-    "input_availability_score_0_100": 30,
-    "avg_farmgate_price_usd_per_tonne": 400,
-    "climate_crop_risk_score_0_100": 75,
-    "month": 5,
-    "crop": "Maize",
-    "province": "Matabeleland North"
-  }'
+python -m venv .venv
+.venv\Scripts\activate        # Windows
+pip install -r requirements.txt
+uvicorn api.main:app --reload
 ```
 
----
+Then open `index.html` in a browser (with the API running on `localhost:8000`) for the chat-style prediction and district-overview interface.
 
-## Target User Personas
+## Tests
 
-| Persona | What this system answers |
-|---|---|
-| Extension Officers | Which districts need urgent pest/input intervention right now? |
-| Farmer Associations | What is the risk level and expected yield for my crop this month? |
-| Food Security Planners | How are yields and risk scores trending across provinces? |
+```bash
+pip install pytest
+pytest tests/test_main.py -v
+```
 
----
+8 tests covering `/predict` schema and probability normalization, HTTP 422 validation rejection, unseen-category handling, `/districts` row counts and province filtering, and `/health`'s dataset disclosure.
 
-## Dataset Statement
+## Known limitations (disclosed, not hidden)
 
-Synthetic aggregate sample data provided by AI4I for challenge use only.
-**Not official national statistics.** See `docs/dataset_statement.md`.
+- **Dataset:** trained on 360 synthetic AI4I Design Track sample rows, not official AGRITEX/FAO/CIMMYT statistics. Not yet validated against real field outcomes.
+- **CORS:** currently `allow_origins=["*"]` — fine for a demo, must be restricted before any production deployment.
+- **No authentication** on the API — acceptable for a Challenge submission, not for production.
+- **No rate limiting.**
+- **Stateless:** no persistent database; a Supabase/PostgreSQL schema is proposed in the full technical proposal for a future pilot phase.
 
----
+## Roadmap
 
-## Security
+- USSD channel integration (AfricaTalking sandbox) for farmers without smartphone/data access
+- Real AGRITEX/FAO/CIMMYT field data to replace the synthetic sample set
+- ZCHPC compute for a full hyperparameter sweep at scale
 
-No API keys or secrets are committed. The API accepts unauthenticated requests
-on localhost for development; add OAuth2 / API-key middleware before any
-public deployment.
+## Full proposal
+
+See `AgriRisk_AI4I_Proposal_Development.pdf` in this repository for the complete technical design, compliance framework, and roadmap submitted to the POTRAZ AI4I Challenge.
