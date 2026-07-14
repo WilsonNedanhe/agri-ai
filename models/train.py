@@ -45,7 +45,10 @@ CATEGORICAL = ["crop", "province"]
 
 def load_data():
     df = pd.read_csv(DATA)
-    df["month_num"] = pd.to_datetime(df["month"]).dt.month
+    # Plain string split instead of pd.to_datetime — sidesteps a pandas
+    # 3.0.2 / PyArrow string-backend access-violation crash on Windows
+    # that occurs even with an explicit format= argument.
+    df["month_num"] = df["month"].astype(str).str.split("-").str[1].astype(int)
     df["risk_binary"] = df["risk_level"].apply(lambda x: "Low" if x == "Low" else "Elevated")
     return df
 
